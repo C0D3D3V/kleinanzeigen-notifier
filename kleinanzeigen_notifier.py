@@ -250,6 +250,7 @@ async def process_all_jobs(config):
 
 def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.info("Kleinanzeigen-Notifier started")
 
     config = load_environment_variables()
 
