@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  kleinanzeigen-notifier:
+    build: .
+    container_name: kleinanzeigen-notifier
+    env_file:
+        - .env
+    volumes:
+      - ./app-kleinanzeigen-notifier:/app/data
+    restart: always
