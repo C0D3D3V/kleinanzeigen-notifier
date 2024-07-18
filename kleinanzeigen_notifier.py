@@ -221,7 +221,7 @@ async def send_email(config, job, articles):
     message.attach(part)
 
     try:
-        if config["KN_SMTP_SECURE"].lower() == "true":
+        if config["KN_SMTP_SECURE"].lower() in ["true", "1"]:
             context = ssl.create_default_context()
             with smtplib.SMTP_SSL(config["KN_SMTP_HOST"], config["KN_SMTP_PORT"], context=context) as server:
                 server.login(config["KN_SMTP_USER"], config["KN_SMTP_PASS"])
