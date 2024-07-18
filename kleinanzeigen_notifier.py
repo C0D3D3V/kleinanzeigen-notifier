@@ -109,6 +109,8 @@ def load_or_create_jobs_json(config):
     try:
         with open(jobs_path, "r", encoding='utf-8') as f:
             jobs = json.load(f)
+            if not isinstance(jobs, list):
+                jobs = [jobs]
             for job in jobs:
                 if "job_id" not in job:
                     job["job_id"] = str(random.randint(100000000000, 999999999999))
