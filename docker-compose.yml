@@ -3,6 +3,7 @@ version: '3.8'
 services:
   kleinanzeigen-notifier:
     build: .
+    user: "620:1000"
     container_name: kleinanzeigen-notifier
     env_file:
         - .env

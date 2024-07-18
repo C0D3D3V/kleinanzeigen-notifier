@@ -111,9 +111,16 @@ def load_or_create_jobs_json(config):
             jobs = json.load(f)
             if not isinstance(jobs, list):
                 jobs = [jobs]
+            keys_to_check = ["blacklist_words", "blacklist_texts", "whitelist_words", "whitelist_texts"]
             for job in jobs:
                 if "job_id" not in job:
                     job["job_id"] = str(random.randint(100000000000, 999999999999))
+                for key in keys_to_check:
+                    if key not in job:
+                        job[key] = []
+                    else:
+                        job[key] = [s.lower() for s in job[key]]
+
         with open(jobs_path, "w", encoding='utf-8') as f:
             json.dump(jobs, f, indent=2)
         return jobs
@@ -187,7 +194,7 @@ async def process_job(config, job):
             if not ad_table:
                 break
 
-            for ad_item in ad_table.find_all("li", {"class": "aditem"}):
+            for ad_item in ad_table.find_all("article", {"class": "aditem"}):
                 ad_id = ad_item.get("data-adid")
                 if not ad_id or ad_id in job_data["ads"]:
                     break
