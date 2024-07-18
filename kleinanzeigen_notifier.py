@@ -13,6 +13,7 @@ License:         MIT License
 
 import asyncio
 import json
+import logging
 import os
 import random
 import smtplib
@@ -82,9 +83,9 @@ async def send_test_email(config):
                 server.starttls()
                 server.login(config["KN_SMTP_USER"], config["KN_SMTP_PASS"])
                 server.sendmail(config["KN_SMTP_FROM_ADDRESS"], config["KN_TEST_EMAIL_TO_ADDRESS"], message.as_string())
-        print("Test email sent successfully.")
+        logging.info("Test email sent successfully.")
     except Exception as e:
-        print(f"Failed to send test email: {e}")
+        logging.error("Failed to send test email: %s", e)
 
 
 def load_or_create_jobs_json(config):
@@ -100,7 +101,9 @@ def load_or_create_jobs_json(config):
             "whitelist_texts": ["only match article, with one of these texts"],
             "job_id": str(random.randint(100000000000, 999999999999)),
         }
-        print(json.dumps([example_job], indent=2))
+        logging.error('No jobs.json could be loaded')
+        logging.info('Example jobs.json:')
+        logging.info(json.dumps([example_job], indent=2))
         time.sleep(5)
         return None
     try:
@@ -113,7 +116,7 @@ def load_or_create_jobs_json(config):
             json.dump(jobs, f, indent=2)
         return jobs
     except Exception as e:
-        print(f"Error loading jobs.json: {e}")
+        logging.error("Error loading jobs.json: %s", e)
         time.sleep(5)
         return None
 
@@ -231,21 +234,23 @@ async def send_email(config, job, articles):
                 server.starttls()
                 server.login(config["KN_SMTP_USER"], config["KN_SMTP_PASS"])
                 server.sendmail(config["KN_SMTP_FROM_ADDRESS"], job["email"], message.as_string())
-        print(f"Email sent successfully to {job['email']}.")
+        logging.info("Email sent successfully to %s.", job['email'])
     except Exception as e:
-        print(f"Failed to send email: {e}")
+        logging.error("Failed to send email: %s", e)
 
 
 async def process_all_jobs(config):
-    jobs = load_or_create_jobs_json(config)
-    if not jobs:
-        return
+    jobs = None
+    while not jobs:
+        jobs = load_or_create_jobs_json(config)
 
     tasks = [process_job(config, job) for job in jobs]
     await asyncio.gather(*tasks)
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
     config = load_environment_variables()
 
     if config["KN_TEST_EMAIL"].lower() in ["true", "1"]:
@@ -257,7 +262,7 @@ def main():
         try:
             asyncio.run(process_all_jobs(config))
         except Exception as e:
-            print(f"Error during processing: {e}")
+            logging.error("Error during processing: %s", e)
         time.sleep(interval_seconds)
 
 
