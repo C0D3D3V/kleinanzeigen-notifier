@@ -95,9 +95,9 @@ def load_or_create_jobs_json(config):
             "title": "Küche zu verschenken",
             "email": "example@example.com",
             "blacklist_words": ["skip"],
-            "blacklist_texts": ["do not match artikels with any of this texts"],
+            "blacklist_texts": ["do not match any article, with one of these texts"],
             "whitelist_words": ["onlywiththis"],
-            "whitelist_texts": ["only match artikels with any of this texts"],
+            "whitelist_texts": ["only match article, with one of these texts"],
             "job_id": str(random.randint(100000000000, 999999999999)),
         }
         print(json.dumps([example_job], indent=2))
