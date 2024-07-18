@@ -14,7 +14,7 @@ RUN pip install -r requirements.txt
 COPY . .
 
 # Umgebungsvariablen setzen (kann auch im docker-compose.yml gesetzt werden)
-ENV KLEINANZEIGEN_NOTIFIER_PATH /app/data
+ENV KN_PATH /app/data
 
 # Startbefehl für das Python-Skript
 CMD ["python", "./kleinanzeigen_notifier.py"]

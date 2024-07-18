@@ -248,10 +248,10 @@ async def process_all_jobs(config):
 def main():
     config = load_environment_variables()
 
-    if config["KLEINANZEIGEN_NOTIFIER_TEST_EMAIL"].lower() in ["true", "1"]:
+    if config["KN_TEST_EMAIL"].lower() in ["true", "1"]:
         asyncio.run(send_test_email(config))
 
-    interval_seconds = parse_interval(config["KLEINANZEIGEN_NOTIFIER_INTERVAL"])
+    interval_seconds = parse_interval(config["KN_INTERVAL"])
 
     while True:
         try:
