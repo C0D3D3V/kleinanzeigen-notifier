@@ -48,6 +48,7 @@ def load_environment_variables():
         "KN_SMTP_HOSTNAME",
         "KN_TEST_EMAIL",
         "KN_TEST_EMAIL_TO_ADDRESS",
+        "KN_PARALLEL_DOWNLOADS",
     ]
     config = {}
     for var in variables:
@@ -63,7 +64,24 @@ def parse_interval(interval_str):
     return int(interval_str[:-1]) * units[interval_str[-1]]
 
 
-async def send_test_email(config):
+def send_email_msg(config, to_address: str, message: str):
+    try:
+        if config["KN_SMTP_SECURE"].lower() in ["true", "1"]:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL(config["KN_SMTP_HOST"], config["KN_SMTP_PORT"], context=context) as server:
+                server.login(config["KN_SMTP_USER"], config["KN_SMTP_PASS"])
+                server.sendmail(config["KN_SMTP_FROM_ADDRESS"], to_address, message)
+        else:
+            with smtplib.SMTP(config["KN_SMTP_HOST"], config["KN_SMTP_PORT"]) as server:
+                server.starttls()
+                server.login(config["KN_SMTP_USER"], config["KN_SMTP_PASS"])
+                server.sendmail(config["KN_SMTP_FROM_ADDRESS"], to_address, message)
+        logging.info("Email sent successfully to %s.", to_address)
+    except Exception as e:
+        logging.error("Failed to send email: %s", e)
+
+
+def send_test_email(config):
     message = MIMEMultipart("alternative")
     message["Subject"] = "Test Email"
     message["From"] = config["KN_SMTP_FROM_ADDRESS"]
@@ -72,20 +90,7 @@ async def send_test_email(config):
     part = MIMEText(text, "plain")
     message.attach(part)
 
-    try:
-        if config["KN_SMTP_SECURE"].lower() == "true":
-            context = ssl.create_default_context()
-            with smtplib.SMTP_SSL(config["KN_SMTP_HOST"], config["KN_SMTP_PORT"], context=context) as server:
-                server.login(config["KN_SMTP_USER"], config["KN_SMTP_PASS"])
-                server.sendmail(config["KN_SMTP_FROM_ADDRESS"], config["KN_TEST_EMAIL_TO_ADDRESS"], message.as_string())
-        else:
-            with smtplib.SMTP(config["KN_SMTP_HOST"], config["KN_SMTP_PORT"]) as server:
-                server.starttls()
-                server.login(config["KN_SMTP_USER"], config["KN_SMTP_PASS"])
-                server.sendmail(config["KN_SMTP_FROM_ADDRESS"], config["KN_TEST_EMAIL_TO_ADDRESS"], message.as_string())
-        logging.info("Test email sent successfully.")
-    except Exception as e:
-        logging.error("Failed to send test email: %s", e)
+    send_email_msg(config, config["KN_TEST_EMAIL_TO_ADDRESS"], message.as_string())
 
 
 def load_or_create_jobs_json(config):
@@ -136,19 +141,14 @@ def load_or_create_job_json(config, job_id):
         try:
             with open(job_json_path, "r", encoding='utf-8') as f:
                 return json.load(f)
-        except:
+        except Exception:
             return {"ads": []}
     return {"ads": []}
 
 
-async def fetch(session, url):
-    async with session.get(url) as response:
-        return await response.text()
-
-
-async def fetch_article(session, ad_id, job):
+async def fetch_article(ad_id, job, pool):
     ad_url = f"https://www.kleinanzeigen.de/s-anzeige/{ad_id}"
-    ad_content = await fetch(session, ad_url)
+    ad_content = await pool.fetch(ad_url)
     ad_soup = BeautifulSoup(ad_content, "html.parser")
     title_element = ad_soup.find("h1", {"id": "viewad-title"})
     title = title_element.get_text(strip=True)
@@ -181,42 +181,41 @@ async def fetch_article(session, ad_id, job):
     return Article(id=ad_id, title=title, description=description)
 
 
-async def process_job(config, job):
+async def process_job(config, job, pool):
     job_data = load_or_create_job_json(config, job["job_id"])
     new_ads = []
 
-    async with aiohttp.ClientSession() as session:
-        page_url = job["tracking_url"]
-        while page_url:
-            page_content = await fetch(session, page_url)
-            soup = BeautifulSoup(page_content, "html.parser")
-            ad_table = soup.find("ul", {"id": "srchrslt-adtable"})
-            if not ad_table:
+    page_url = job["tracking_url"]
+    while page_url:
+        page_content = await pool.fetch(page_url)
+        soup = BeautifulSoup(page_content, "html.parser")
+        ad_table = soup.find("ul", {"id": "srchrslt-adtable"})
+        if not ad_table:
+            break
+
+        for ad_item in ad_table.find_all("article", {"class": "aditem"}):
+            ad_id = ad_item.get("data-adid")
+            if not ad_id or ad_id in job_data["ads"]:
                 break
+            new_ads.append(ad_id)
 
-            for ad_item in ad_table.find_all("article", {"class": "aditem"}):
-                ad_id = ad_item.get("data-adid")
-                if not ad_id or ad_id in job_data["ads"]:
-                    break
-                new_ads.append(ad_id)
+        next_page = soup.find("a", {"class": "pagination-next"})
+        page_url = next_page["href"] if next_page else None
 
-            next_page = soup.find("a", {"class": "pagination-next"})
-            page_url = next_page["href"] if next_page else None
+    tasks = [fetch_article(ad_id, job, pool) for ad_id in new_ads]
+    articles = await asyncio.gather(*tasks)
+    articles = [article for article in articles if article is not None]
 
-        tasks = [fetch_article(session, ad_id, job) for ad_id in new_ads]
-        articles = await asyncio.gather(*tasks)
-        articles = [article for article in articles if article is not None]
+    if articles:
+        send_email(config, job, articles)
 
-        if articles:
-            await send_email(config, job, articles)
-
-        job_data["ads"].extend(new_ads)
-        job_json_path = Path(config["KN_PATH"]) / f"{job['job_id']}.json"
-        with open(job_json_path, "w", encoding='utf-8') as f:
-            json.dump(job_data, f, indent=2)
+    job_data["ads"].extend(new_ads)
+    job_json_path = Path(config["KN_PATH"]) / f"{job['job_id']}.json"
+    with open(job_json_path, "w", encoding='utf-8') as f:
+        json.dump(job_data, f, indent=2)
 
 
-async def send_email(config, job, articles):
+def send_email(config, job, articles):
     message = MIMEMultipart("alternative")
     message["Subject"] = job["title"]
     message["From"] = config["KN_SMTP_FROM_ADDRESS"]
@@ -232,20 +231,48 @@ async def send_email(config, job, articles):
     part = MIMEText(html, "html")
     message.attach(part)
 
-    try:
-        if config["KN_SMTP_SECURE"].lower() in ["true", "1"]:
-            context = ssl.create_default_context()
-            with smtplib.SMTP_SSL(config["KN_SMTP_HOST"], config["KN_SMTP_PORT"], context=context) as server:
-                server.login(config["KN_SMTP_USER"], config["KN_SMTP_PASS"])
-                server.sendmail(config["KN_SMTP_FROM_ADDRESS"], job["email"], message.as_string())
-        else:
-            with smtplib.SMTP(config["KN_SMTP_HOST"], config["KN_SMTP_PORT"]) as server:
-                server.starttls()
-                server.login(config["KN_SMTP_USER"], config["KN_SMTP_PASS"])
-                server.sendmail(config["KN_SMTP_FROM_ADDRESS"], job["email"], message.as_string())
-        logging.info("Email sent successfully to %s.", job['email'])
-    except Exception as e:
-        logging.error("Failed to send email: %s", e)
+    send_email_msg(config, job['email'], message.as_string())
+
+
+class Worker:
+    def __init__(self):
+        self.session = aiohttp.ClientSession()
+
+    async def close(self):
+        await self.session.close()
+
+    async def fetch(self, url: str) -> str:
+        async with self.session.get(url) as response:
+            return await response.text()
+
+
+class WorkerPool:
+    def __init__(self, num_workers: int):
+        self.num_workers = num_workers
+        self.workers = [Worker() for _ in range(num_workers)]
+        self.queue = asyncio.Queue()
+
+    async def start_workers(self):
+        for worker in self.workers:
+            await self.queue.put(worker)
+
+    async def stop_workers(self):
+        for worker in self.workers:
+            await worker.close()
+
+    async def get_worker(self) -> Worker:
+        return await self.queue.get()
+
+    async def release_worker(self, worker: Worker):
+        await self.queue.put(worker)
+
+    async def fetch(self, url: str) -> str:
+        worker = await self.get_worker()
+        try:
+            result = await worker.fetch(url)
+        finally:
+            await self.release_worker(worker)
+        return result
 
 
 async def process_all_jobs(config):
@@ -253,8 +280,13 @@ async def process_all_jobs(config):
     while not jobs:
         jobs = load_or_create_jobs_json(config)
 
-    tasks = [process_job(config, job) for job in jobs]
+    pool = WorkerPool(int(config["KN_PARALLEL_DOWNLOADS"]))
+    await pool.start_workers()
+
+    tasks = [process_job(config, job, pool) for job in jobs]
     await asyncio.gather(*tasks)
+
+    await pool.stop_workers()
 
 
 def main():
@@ -264,7 +296,7 @@ def main():
     config = load_environment_variables()
 
     if config["KN_TEST_EMAIL"].lower() in ["true", "1"]:
-        asyncio.run(send_test_email(config))
+        send_test_email(config)
 
     interval_seconds = parse_interval(config["KN_INTERVAL"])
 
@@ -273,6 +305,7 @@ def main():
             asyncio.run(process_all_jobs(config))
         except Exception as e:
             logging.error("Error during processing: %s", e)
+        logging.info("Sleeping now for %s", config["KN_INTERVAL"])
         time.sleep(interval_seconds)
 
 

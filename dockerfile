@@ -15,6 +15,7 @@ COPY . .
 
 # Umgebungsvariablen setzen (kann auch im docker-compose.yml gesetzt werden)
 ENV KN_PATH /app/data
+ENV KN_PARALLEL_DOWNLOADS 10
 
 # Startbefehl für das Python-Skript
 CMD ["python", "./kleinanzeigen_notifier.py"]
