@@ -163,8 +163,8 @@ async def fetch_article(ad_id, job, pool):
         if any(bl_word in title_lower or bl_word in description_lower for bl_word in job["blacklist_texts"]):
             return None
 
-    title_words = set(title_lower.split())
-    description_words = set(description_lower.split())
+    title_words = set(title_lower.split('\n\r \t,.!?"§$%&/(){}[]?\\'))
+    description_words = set(description_lower.split('\n\r \t,.!?"§$%&/(){}[]?\\'))
     if job.get("blacklist_words"):
         if any(bl_word in title_words or bl_word in description_words for bl_word in job["blacklist_words"]):
             return None
@@ -250,7 +250,7 @@ class WorkerPool:
     def __init__(self, num_workers: int):
         self.num_workers = num_workers
         self.workers = [Worker() for _ in range(num_workers)]
-        self.queue = asyncio.Queue()
+        self.queue: asyncio.Queue[Worker] = asyncio.Queue()
 
     async def start_workers(self):
         for worker in self.workers:
