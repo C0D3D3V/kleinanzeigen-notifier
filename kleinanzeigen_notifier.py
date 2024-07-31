@@ -10,12 +10,12 @@ Description:     Dieses Skript überwacht Kleinanzeigen auf neue Einträge
 Version:         1.0
 License:         MIT License
 """
-
 import asyncio
 import json
 import logging
 import os
 import random
+import re
 import smtplib
 import ssl
 import time
@@ -96,7 +96,11 @@ def send_test_email(config):
 def load_or_create_jobs_json(config):
     jobs_path = Path(config["KN_PATH"]) / "jobs.json"
     if not jobs_path.exists():
-        example_job = {
+        logging.error('No jobs.json could be loaded')
+        logging.info('Example jobs.json:')
+        logging.info(
+            """
+        {
             "tracking_url": "https://www.kleinanzeigen.de/s-zu-verschenken-tauschen/77746/k%C3%BCche/k0c272l9032r30",
             "title": "Küche zu verschenken",
             "email": "example@example.com",
@@ -104,11 +108,10 @@ def load_or_create_jobs_json(config):
             "blacklist_texts": ["do not match any article, with one of these texts"],
             "whitelist_words": ["onlywiththis"],
             "whitelist_texts": ["only match article, with one of these texts"],
-            "job_id": str(random.randint(100000000000, 999999999999)),
+            "job_id": 5678657834,
         }
-        logging.error('No jobs.json could be loaded')
-        logging.info('Example jobs.json:')
-        logging.info(json.dumps([example_job], indent=2))
+        """
+        )
         time.sleep(5)
         return None
     try:
@@ -127,7 +130,7 @@ def load_or_create_jobs_json(config):
                         job[key] = [s.lower() for s in job[key]]
 
         with open(jobs_path, "w", encoding='utf-8') as f:
-            json.dump(jobs, f, indent=2)
+            json.dump(jobs, f, indent=2, ensure_ascii=False)
         return jobs
     except Exception as e:
         logging.error("Error loading jobs.json: %s", e)
@@ -163,8 +166,8 @@ async def fetch_article(ad_id, job, pool):
         if any(bl_word in title_lower or bl_word in description_lower for bl_word in job["blacklist_texts"]):
             return None
 
-    title_words = set(title_lower.split('\n\r \t,.!?"§$%&/(){}[]?\\'))
-    description_words = set(description_lower.split('\n\r \t,.!?"§$%&/(){}[]?\\'))
+    title_words = re.findall(r"[\w]+", title_lower)
+    description_words = re.findall(r"[\w]+", description_lower)
     if job.get("blacklist_words"):
         if any(bl_word in title_words or bl_word in description_words for bl_word in job["blacklist_words"]):
             return None
@@ -212,7 +215,7 @@ async def process_job(config, job, pool):
     job_data["ads"].extend(new_ads)
     job_json_path = Path(config["KN_PATH"]) / f"{job['job_id']}.json"
     with open(job_json_path, "w", encoding='utf-8') as f:
-        json.dump(job_data, f, indent=2)
+        json.dump(job_data, f, indent=2, ensure_ascii=False)
 
 
 def send_email(config, job, articles):
