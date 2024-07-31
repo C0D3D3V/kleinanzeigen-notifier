@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import aiohttp
 from bs4 import BeautifulSoup
@@ -203,7 +204,7 @@ async def process_job(config, job, pool):
             new_ads.append(ad_id)
 
         next_page = soup.find("a", {"class": "pagination-next"})
-        page_url = next_page["href"] if next_page else None
+        page_url = resolve_url(page_url, next_page["href"]) if next_page else None
 
     tasks = [fetch_article(ad_id, job, pool) for ad_id in new_ads]
     articles = await asyncio.gather(*tasks)
@@ -276,6 +277,28 @@ class WorkerPool:
         finally:
             await self.release_worker(worker)
         return result
+
+
+def resolve_url(base_url: str, href: str) -> str:
+    parsed_base = urlparse(base_url)
+
+    # Check if the href is a full URL
+    parsed_href = urlparse(href)
+    if parsed_href.scheme and parsed_href.netloc:
+        # href is already an absolute URL
+        return href
+
+    # Resolve relative and root-relative URLs using urljoin
+    full_url = urljoin(base_url, href)
+
+    # Ensure the scheme and netloc are present in the final URL
+    parsed_full_url = urlparse(full_url)
+    if not parsed_full_url.scheme:
+        full_url = urlunparse(parsed_full_url._replace(scheme=parsed_base.scheme))
+    if not parsed_full_url.netloc:
+        full_url = urlunparse(parsed_full_url._replace(netloc=parsed_base.netloc))
+
+    return full_url
 
 
 async def process_all_jobs(config):
