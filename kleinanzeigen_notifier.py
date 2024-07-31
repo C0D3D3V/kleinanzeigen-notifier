@@ -229,7 +229,7 @@ def send_email(config, job, articles):
     html += f"<h1>{job['title']}</h1>"
     for article in articles:
         url = f"https://www.kleinanzeigen.de/s-anzeige/{article.id}"
-        html += f'<p><a href="{url}">{article.title}</a><br>{article.description}</p>'
+        html += f'<p><a href="{url}">{article.title}</a><br>{article.description.replace('\n', '<br>')}</p>'
     html += "</body></html>"
 
     part = MIMEText(html, "html")
