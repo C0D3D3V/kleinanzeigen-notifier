@@ -157,7 +157,7 @@ async def fetch_article(ad_id, job, pool):
     title_element = ad_soup.find("h1", {"id": "viewad-title"})
     title = title_element.get_text(strip=True)
     description_element = ad_soup.find("p", {"id": "viewad-description-text"})
-    description = description_element.get_text(strip=True)
+    description = ''.join(content.strip() if isinstance(content, str) else '\n' for content in description_element.contents)
 
     title_lower = title.lower()
     description_lower = description.lower()
