@@ -102,7 +102,7 @@ def load_or_create_jobs_json(config):
         logging.info(
             """
         {
-            "tracking_url": "https://www.kleinanzeigen.de/s-zu-verschenken-tauschen/77746/k%C3%BCche/k0c272l9032r30",
+            "tracking_url": "https://www.kleinanzeigen.de/s-zu-verschenken-tauschen/berlin/k%C3%BCche/k0c272l3331r50",
             "title": "Küche zu verschenken",
             "email": "example@example.com",
             "blacklist_words": ["skip"],
@@ -157,7 +157,9 @@ async def fetch_article(ad_id, job, pool):
     title_element = ad_soup.find("h1", {"id": "viewad-title"})
     title = title_element.get_text(strip=True)
     description_element = ad_soup.find("p", {"id": "viewad-description-text"})
-    description = ''.join(content.strip() if isinstance(content, str) else '\n' for content in description_element.contents)
+    description = ''.join(
+        content.strip() if isinstance(content, str) else '\n' for content in description_element.contents
+    )
 
     title_lower = title.lower()
     description_lower = description.lower()
